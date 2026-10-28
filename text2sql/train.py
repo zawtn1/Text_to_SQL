@@ -34,6 +34,25 @@ def supports_bf16() -> bool:
     return torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
 
 
+def fix_param_dtypes(model, compute_dtype: torch.dtype) -> None:
+    """Keep trainable (LoRA) weights in fp32 and frozen weights in compute_dtype.
+
+    Qwen ships bf16 weights, and some may stay bf16 even when fp16 is requested.
+    The fp16 GradScaler cannot unscale bf16 gradients, and T4s have no native
+    bf16, so cast: trainable -> fp32, frozen floating-point -> compute_dtype.
+    4-bit quantized weights (uint8) are left alone.
+    """
+    from collections import Counter
+
+    for p in model.parameters():
+        if p.requires_grad:
+            p.data = p.data.float()
+        elif p.is_floating_point() and p.dtype != compute_dtype and p.dtype != torch.float32:
+            p.data = p.data.to(compute_dtype)
+    counts = Counter((str(p.dtype), p.requires_grad) for p in model.parameters())
+    print("param dtypes (dtype, trainable): count ->", dict(counts))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, required=True)
@@ -122,6 +141,7 @@ def main() -> None:
         processing_class=tokenizer,
         peft_config=peft_config,
     )
+    fix_param_dtypes(trainer.model, compute_dtype)
     trainer.model.print_trainable_parameters()
 
     resume_from = None
