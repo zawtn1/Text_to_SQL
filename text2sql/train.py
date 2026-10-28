@@ -11,8 +11,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 from pathlib import Path
+
+# Kaggle's "T4 x2" exposes two GPUs, and Trainer would wrap the model in
+# nn.DataParallel, which SFTTrainer rejects. Train on one GPU unless the caller
+# chose devices explicitly. Must run before torch initializes CUDA.
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
 import torch
 import yaml
