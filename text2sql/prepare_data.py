@@ -96,12 +96,21 @@ def main() -> None:
     args = ap.parse_args()
 
     db_dir = args.db_dir or args.spider_dir / "database"
+    if not (args.spider_dir / "train_spider.json").exists() or not db_dir.is_dir():
+        found = sorted(p.name for p in args.spider_dir.iterdir()) if args.spider_dir.is_dir() else "directory does not exist"
+        raise SystemExit(
+            f"Spider not found: expected train_spider.json and database/ in {args.spider_dir}\n"
+            f"Contents: {found}"
+        )
     train_files = ["train_spider.json"] + ([] if args.no_train_others else ["train_others.json"])
 
     print("Building train...")
     train = to_records(load_split(args.spider_dir, train_files), db_dir, "train", args.sample_rows, args.dialect)
     print("Building dev...")
     dev = to_records(load_split(args.spider_dir, ["dev.json"]), db_dir, "dev", args.sample_rows, args.dialect)
+
+    if not train or not dev:
+        raise SystemExit(f"No examples built (train={len(train)}, dev={len(dev)}); check --spider-dir / --db-dir.")
 
     random.Random(args.seed).shuffle(train)
     val, train = train[: args.val_size], train[args.val_size:]
